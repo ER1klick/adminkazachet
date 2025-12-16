@@ -1,0 +1,284 @@
+Вот подробная методичка по выполнению лабораторной работы. В неё включены все исправления ошибок, с которыми мы столкнулись (сеть Docker, версии .NET, порядок кода в C#, настройки VirtualBox).
+
+Методичка: Настройка CI/CD и мониторинга (Jenkins + Docker + Prometheus + Grafana)
+
+Цель: Развернуть .NET приложение в Docker, настроить автоматическую сборку через Jenkins и визуализацию метрик в Grafana.
+Инструменты: VirtualBox (Ubuntu Server 22.04), Docker, GitHub.
+
+1. Подготовка виртуальной машины
+Настройка сети
+
+Чтобы сервисы были доступны из браузера Windows:
+
+В настройках VirtualBox выберите машину -> Сеть.
+
+Тип подключения: Сетевой мост (Bridged Adapter).
+
+Внутри Ubuntu узнайте свой IP:
+ip a
+
+(Запомните IP вида 192.168.x.x. Далее в инструкции он обозначен как <ВАШ_IP>).
+
+Установка софта
+
+В терминале Ubuntu выполните:
+
+sudo apt update
+sudo apt install -y git docker.io docker-compose-v2 dotnet-sdk-8.0
+sudo usermod -aG docker $USER
+newgrp docker
+Исправление интернета в Docker (Fix MTU/DNS)
+
+Критически важно для VirtualBox, иначе сборка будет зависать.
+
+Откройте конфиг:
+sudo nano /etc/docker/daemon.json
+
+Вставьте содержимое:
+{
+  "dns": ["8.8.8.8", "1.1.1.1"],
+  "mtu": 1350
+}
+
+Примените настройки:
+
+sudo systemctl restart docker
+2. Подготовка проекта
+Клонирование
+
+git clone -b test https://github.com/Kirgly1/SOP2.git
+cd SOP2
+Удаление конфликтных файлов
+
+В репозитории есть старый файл композа, который мешает. Удалите его:
+
+rm docker-compose.yaml
+Настройка кода сервиса (.NET 8 + Metrics)
+
+Мы будем запускать сервис LinuxPackageManager.AnalyticsService.
+
+А. Исправление .csproj (Зависимости и версия)
+
+Откройте файл проекта:
+nano LinuxPackageManager.AnalyticsService/LinuxPackageManager.AnalyticsService.csproj
+
+Полностью замените содержимое на это (тут исправлена версия на 8.0 и добавлены пакеты Prometheus):
+<Project Sdk="Microsoft.NET.Sdk.Web">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="prometheus-net.AspNetCore" Version="8.0.1" />
+        <PackageReference Include="Grpc.AspNetCore" />
+        <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.14.0-beta.1" />
+        <PackageReference Include="OpenTelemetry.Exporter.Zipkin" Version="1.14.0" />
+        <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.14.0" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.14.0" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.GrpcNetClient" Version="1.14.0-beta.1" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.14.0" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.14.0" />
+    </ItemGroup>
+</Project>
+
+Б. Исправление Program.cs (Логика запуска)
+
+Откройте файл кода:
+nano LinuxPackageManager.AnalyticsService/Program.cs
+
+Полностью замените содержимое на это (исправлен порядок Build и добавлены метрики):
+
+using LinuxPackageManager.AnalyticsService.Services;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using Prometheus;
+
+var builder = WebApplication.CreateBuilder(args);
+
+var serviceName = builder.Environment.ApplicationName;
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService(serviceName))
+    .WithTracing(tracing => {
+        tracing.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation().AddGrpcClientInstrumentation().AddSource("MassTransit");
+        tracing.AddZipkinExporter(zipkin => {
+            var zipkinUrl = builder.Configuration["Zipkin:Endpoint"] ?? "http://localhost:9411/api/v2/spans";
+            zipkin.Endpoint = new Uri(zipkinUrl);
+        });
+    })
+    .WithMetrics(metrics => {
+        metrics.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation().AddRuntimeInstrumentation();
+        metrics.AddPrometheusExporter();
+    });
+builder.Services.AddGrpc();
+
+
+var app = builder.Build();
+
+app.UseMetricServer();
+app.UseHttpMetrics();
+
+app.MapGrpcService<AnalyticsGrpcService>();
+app.MapGet("/", () => "Service is running correctly.");
+app.UseOpenTelemetryPrometheusScrapingEndpoint();
+
+app.Run();
+
+
+3. Создание конфигурационных файлов
+
+В корне папки SOP2 создайте 4 файла.
+
+1. Dockerfile
+
+nano Dockerfile
+
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY . .
+RUN dotnet publish LinuxPackageManager.AnalyticsService/LinuxPackageManager.AnalyticsService.csproj -c Release -o /app/publish
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
+WORKDIR /app
+COPY --from=build /app/publish .
+ENTRYPOINT ["dotnet", "LinuxPackageManager.AnalyticsService.dll"]
+
+
+2. prometheus.yml
+
+nano prometheus.yml
+
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'sop-app'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['app-service:8080']
+
+3. docker-compose.yml
+nano docker-compose.yml
+
+version: '3.8'
+services:
+  app-service:
+    build: .
+    container_name: sop-app
+    ports:
+      - "8080:8080"
+    environment:
+      - ASPNETCORE_HTTP_PORTS=8080
+    networks:
+      - monitoring
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: jenkins
+    user: root
+    ports:
+      - "8081:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/app
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+
+volumes:
+  jenkins_home:
+4. Jenkinsfile
+ip
+nano Jenkinsfile
+
+
+pipeline {
+    agent any
+    stages {
+        stage('Build & Deploy') {
+            steps {
+                script {
+                    sh 'docker compose down || true' 
+                    sh 'docker compose up -d --build'
+                }
+            }
+        }
+    }
+}
+4. Запуск
+sudo docker compose up -d --build
+
+Дождитесь окончания сборки. Проверьте статус:
+
+sudo docker ps
+
+Все 4 контейнера должны быть Up (или Started).
+
+5. Настройка интерфейсов (В браузере Windows)
+1. Проверка приложения
+
+Перейдите по адресу: http://<ВАШ_IP>:8080/metrics.
+Вы должны увидеть много строк с текстом (это сырые данные метрик).
+
+2. Настройка Jenkins
+
+Адрес: http://<ВАШ_IP>:8081.
+
+Пароль: В терминале Ubuntu введите:
+
+
+sudo docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+
+Нажмите "Install suggested plugins", создайте админа.
+
+Создайте "New Item" -> "Pipeline" -> В настройках Pipeline выберите "Pipeline script from SCM" -> Git -> Ссылка на ваш репозиторий.
+
+3. Настройка Grafana
+
+Адрес: http://<ВАШ_IP>:3000 (логин/пароль: admin/admin).
+
+Подключение Prometheus:
+
+Connections -> Data Sources -> Add new data source -> Prometheus.
+
+URL: http://prometheus:9090 (именно так!).
+
+Нажмите "Save & test".
+
+Визуализация:
+
+Dashboards -> New -> Import.
+
+ID: 10427.
+
+Нажмите Load -> Выберите источник Prometheus -> Import.
+
+Задание готово! Вы увидите графики работы вашего приложения.
