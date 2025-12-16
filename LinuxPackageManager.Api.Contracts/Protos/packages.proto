@@ -1,0 +1,30 @@
+syntax = "proto3";
+import "google/protobuf/timestamp.proto";
+option csharp_namespace = "LinuxPackageManager.Grpc";
+
+package packages;
+
+service PackageService {
+  rpc GetPackageById (GetPackageByIdRequest) returns (PackageModel);
+  rpc CreatePackage (CreatePackageRequest) returns (PackageModel);
+}
+
+message PackageModel {
+  int64 id = 1;
+  string name = 2;
+  string version = 3;
+  string architecture = 4;
+  string repository_name = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message GetPackageByIdRequest {
+  int64 id = 1;
+}
+
+message CreatePackageRequest {
+  string name = 1;
+  string version = 2;
+  string architecture = 3;
+  int64 repository_id = 4;
+}

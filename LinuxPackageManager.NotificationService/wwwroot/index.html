@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket demo</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background-color: #f4f4f9; }
+
+        #messages {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 400px;
+            overflow-y: scroll;
+            background: white;
+            border-radius: 8px;
+        }
+
+        .log { color: gray; font-size: 0.8em; margin-bottom: 5px; }
+        .msg { color: blue; font-weight: bold; margin-bottom: 5px; }
+        
+        .notification {
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 5px solid;
+            border-radius: 4px;
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            animation: slideIn 0.5s ease-out;
+        }
+        .verdict-GOOD { background-color: #d4edda; border-color: #28a745; color: #155724; }
+        .verdict-BAD { background-color: #f8d7da; border-color: #dc3545; color: #721c24; }
+
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    </style>
+</head>
+
+<body>
+<h2>Live Notifications</h2>
+<div id="status">Status: Disconnected</div>
+<br>
+<div id="messages"></div>
+
+<script src="signalr.min.js"></script>
+<script src="main.js"></script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>PackageManager.Host</RootNamespace>
+        <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\LinuxPackageManager.Api.Contracts\LinuxPackageManager.Api.Contracts.csproj" />
+      <ProjectReference Include="..\LinuxPackageManager.Application\LinuxPackageManager.Application.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Google.Protobuf" Version="3.33.1" />
+      <PackageReference Include="Grpc.AspNetCore" Version="2.71.0" />
+      <PackageReference Include="Grpc.Net.Client" Version="2.76.0-pre1" />
+      <PackageReference Include="Grpc.Net.Client.Web" Version="2.76.0-pre1" />
+      <PackageReference Include="Grpc.Tools" Version="2.76.0">
+        <PrivateAssets>all</PrivateAssets>
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      </PackageReference>
+      <PackageReference Include="HotChocolate" Version="16.0.0-p.8.16" />
+      <PackageReference Include="HotChocolate.AspNetCore" Version="16.0.0-p.8.16" />
+      <PackageReference Include="HotChocolate.Data.EntityFramework" Version="16.0.0-p.8.16" />
+      <PackageReference Include="MassTransit.RabbitMQ" Version="8.5.5" />
+      <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.14.0-beta.1" />
+      <PackageReference Include="OpenTelemetry.Exporter.Zipkin" Version="1.14.0" />
+      <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.14.0" />
+      <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.14.0" />
+      <PackageReference Include="OpenTelemetry.Instrumentation.GrpcNetClient" Version="1.14.0-beta.1" />
+      <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.14.0" />
+      <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.14.0" />
+      <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.4" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Protobuf Include="..\LinuxPackageManager.Api.Contracts\Protos\packages.proto" GrpcServices="Server" Link="Protos\packages.proto" />
+        <Protobuf Include="..\LinuxPackageManager.Api.Contracts\Protos\analytics.proto" GrpcServices="Client" Link="Protos\analytics.proto" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Content Include="..\.dockerignore">
+        <Link>.dockerignore</Link>
+      </Content>
+    </ItemGroup>
+
+</Project>

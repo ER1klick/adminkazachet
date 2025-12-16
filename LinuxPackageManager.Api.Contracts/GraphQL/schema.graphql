@@ -1,0 +1,26 @@
+scalar DateTime
+type Package {
+    id: ID!
+    name: String!
+    version: String!
+    architecture: String!
+    repositoryName: String!
+    createdAt: DateTime!
+}
+
+type Query {
+    packages: [Package!]
+
+    packageById(id: ID!): Package
+}
+
+input CreatePackageInput {
+    name: String!
+    version: String!
+    architecture: String!
+    repositoryId: Int!
+}
+
+type Mutation {
+    createPackage(input: CreatePackageInput!): Package 
+}
